@@ -59,10 +59,15 @@ def create_epub_from_folder(folder_path, output_epub_path, book_title, base_dir)
         toc_items.append(f'<navPoint id="{ch_id}" playOrder="{idx}"><navLabel><text>{subtitle}</text></navLabel><content src="{ch_filename}"/></navPoint>')
         idx += 1
 
-    content_opf = f"""<?xml version="1.0" encoding="UTF-8"?><package xmlns="http://www.idpf.org/2007/opf" unique-identifier="BookId" version="2.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>{book_title}</dc:title><dc:language>ko</dc:language><dc:identifier id="BookId">urn:uuid:550e8400-e29b-41d4-a716-446655440000</dc:identifier></metadata><manifest>{"\n ".join(manifest_items)}</manifest><spine toc="ncx">{"\n ".join(spine_items)}</spine></package>"""
+    # 에러 방지: 백슬래시 조인을 f-string 외부에서 미리 처리
+    manifest_str = "\n ".join(manifest_items)
+    spine_str = "\n ".join(spine_items)
+    toc_str = "\n".join(toc_items)
+
+    content_opf = f"""<?xml version="1.0" encoding="UTF-8"?><package xmlns="http://www.idpf.org/2007/opf" unique-identifier="BookId" version="2.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>{book_title}</dc:title><dc:language>ko</dc:language><dc:identifier id="BookId">urn:uuid:550e8400-e29b-41d4-a716-446655440000</dc:identifier></metadata><manifest>{manifest_str}</manifest><spine toc="ncx">{spine_str}</spine></package>"""
     with open(os.path.join(build_dir, "OEBPS", "content.opf"), "w", encoding="utf-8") as f: f.write(content_opf)
         
-    toc_ncx = f"""<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE ncx PUBLIC "-//NISO//Z39.86-2005//EN" "http://www.daisy.org/z3986/2005/ncx-1.0.dtd"><ncx xmlns="http://www.daisy.org/z3986/2005/ncx-1.0.dtd" version="1.0"><head><meta name="dtb:uid" content="urn:uuid:550e8400-e29b-41d4-a716-446655440000"/><meta name="dtb:depth" content="1"/></head><docTitle><text>{book_title}</text></docTitle><navMap>{"\n".join(toc_items)}</navMap></ncx>"""
+    toc_ncx = f"""<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE ncx PUBLIC "-//NISO//Z39.86-2005//EN" "http://www.daisy.org/z3986/2005/ncx-1.0.dtd"><ncx xmlns="http://www.daisy.org/z3986/2005/ncx-1.0.dtd" version="1.0"><head><meta name="dtb:uid" content="urn:uuid:550e8400-e29b-41d4-a716-446655440000"/><meta name="dtb:depth" content="1"/></head><docTitle><text>{book_title}</text></docTitle><navMap>{toc_str}</navMap></ncx>"""
     with open(os.path.join(build_dir, "OEBPS", "toc.ncx"), "w", encoding="utf-8") as f: f.write(toc_ncx)
         
     with zipfile.ZipFile(output_epub_path, 'w', zipfile.ZIP_DEFLATED) as epub_zip:
@@ -76,7 +81,10 @@ def create_epub_from_folder(folder_path, output_epub_path, book_title, base_dir)
     return True
 
 if __name__ == "__main__":
-    # GitHub Action 인자값 매칭
+    if len(sys.argv) < 4:
+        print("사용법: python downloader.py [소설코드] [시작화수] [끝화수]")
+        sys.exit(1)
+
     novel_code = sys.argv[1]
     start = int(sys.argv[2])
     end = int(sys.argv[3])
