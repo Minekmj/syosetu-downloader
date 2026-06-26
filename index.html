@@ -3,17 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>소설 다운로더 (GitHub Actions 버전)</title>
+    <title>소설 다운로더 (실시간 다운로드 버전)</title>
     <style>
-        body { font-family: sans-serif; background: #f4f6f9; padding: 20px; color: #333; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f4f6f9; padding: 20px; color: #333; }
         .container { max-width: 500px; margin: 40px auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        h1 { text-align: center; font-size: 22px; color: #2c3e50; }
+        h1 { text-align: center; font-size: 22px; color: #2c3e50; margin-bottom: 25px; }
         .form-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; font-weight: bold; }
-        input { width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 6px; }
-        button { width: 100%; padding: 12px; background: #2ecc71; color: white; border: none; border-radius: 6px; font-size: 16px; cursor: pointer; font-weight: bold; }
+        label { display: block; margin-bottom: 6px; font-weight: bold; font-size: 14px; }
+        input { width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 6px; font-size: 15px; }
+        button { width: 100%; padding: 12px; background: #2ecc71; color: white; border: none; border-radius: 6px; font-size: 16px; cursor: pointer; font-weight: bold; margin-top: 10px; }
         button:hover { background: #27ae60; }
-        .info { margin-top: 20px; font-size: 13px; color: #7f8c8d; line-height: 1.5; }
+        button:disabled { background: #bdc3c7; cursor: not-allowed; }
+        #statusBox { display: none; margin-top: 20px; padding: 15px; border-radius: 6px; background: #ebf5fb; border: 1px solid #aed6f1; text-align: center; }
+        .spinner { display: inline-block; width: 20px; height: 20px; border: 3px solid rgba(52,152,219,.3); border-radius: 50%; border-top-color: #3498db; animation: spin 1s ease-in-out infinite; margin-right: 10px; vertical-align: middle; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        #downloadArea { display: none; margin-top: 20px; }
+        .btn-download { background: #e67e22; }
+        .btn-download:hover { background: #d35400; }
     </style>
 </head>
 <body>
@@ -39,18 +45,24 @@
         </div>
     </div>
     
-    <button onclick="triggerDownload()">⚡ GitHub에서 다운로드 시작</button>
+    <button id="startBtn" onclick="triggerDownload()">⚡ 소설 다운로드 시작</button>
 
-    <div class="info">
-        <p>💡 <b>작동 원리:</b> 버튼을 누르면 내 컴퓨터가 아닌 GitHub Actions 서버가 구동되어 소설을 크롤링하고 EPUB 파일을 만들어 줍니다.</p>
-        <p>작업이 끝나면 본인 GitHub 저장소의 <b>Actions</b> 탭에서 생성된 EPUB 파일을 다운로드하실 수 있습니다.</p>
+    <div id="statusBox">
+        <div class="spinner"></div><span id="statusText">GitHub 서버를 깨우는 중...</span>
+    </div>
+
+    <div id="downloadArea">
+        <button id="dlBtn" class="btn-download" onclick="downloadFile()">📥 EPUB 파일 다운로드 받기</button>
     </div>
 </div>
 
 <script>
+let checkInterval = null;
+let downloadUrl = "";
+
 async function triggerDownload() {
-    const token = document.getElementById('ghToken').value;
-    const code = document.getElementById('novelCode').value;
+    const token = document.getElementById('ghToken').value.strip ? document.getElementById('ghToken').value.strip() : document.getElementById('ghToken').value.trim();
+    const code = document.getElementById('novelCode').value.trim().toLowerCase();
     const start = document.getElementById('startPage').value;
     const end = document.getElementById('endPage').value;
 
@@ -59,15 +71,21 @@ async function triggerDownload() {
         return;
     }
 
-    // 현재 접속 중인 GitHub 저장소 정보 추출
     const pathParts = window.location.pathname.split('/');
-    const repoName = pathParts[1] || "syosetu-downloader"; // 본인 저장소 이름에 맞게 수정 필요시 수정
+    const repoName = pathParts[1] || "syosetu-downloader"; 
+    const owner = window.location.hostname.split('.')[0];
     
-    // GitHub API를 호출하여 Actions 워크플로우 실행
-    const url = `https://api.github.com/repos/${window.location.hostname.split('.')[0]}/${repoName}/actions/workflows/download.yml/dispatches`;
+    const triggerUrl = `https://api.github.com/repos/${owner}/${repoName}/actions/workflows/download.yml/dispatches`;
+
+    document.getElementById('startBtn').disabled = true;
+    document.getElementById('downloadArea').style.display = "none";
+    const statusBox = document.getElementById('statusBox');
+    const statusText = document.getElementById('statusText');
+    statusBox.style.display = "block";
+    statusText.innerText = "GitHub Actions 서버 신호 송신 중...";
 
     try {
-        const response = await fetch(url, {
+        const response = await fetch(triggerUrl, {
             method: 'POST',
             headers: {
                 'Authorization': `token ${token}`,
@@ -75,20 +93,86 @@ async function triggerDownload() {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                ref: 'main', // 브랜치 이름
+                ref: 'main',
                 inputs: { novel_code: code, start_page: start, end_page: end }
             })
         });
 
         if (response.status === 204) {
-            alert("🚀 GitHub Actions 서버가 성공적으로 깨어났습니다!\n잠시 후 본인 깃허브의 'Actions' 탭으로 가시면 다운로드가 진행되는 것을 볼 수 있습니다.");
+            statusText.innerText = "🚀 서버 구동 성공! 깃허브에서 크롤링 진행 중... (약 1~2분 소요)";
+            // 10초 후부터 깃허브 서버 상태 추적 시작 (체크 주기: 7초)
+            setTimeout(() => {
+                checkInterval = setInterval(() => checkServerStatus(owner, repoName, token, code), 7000);
+            }, 10000);
         } else {
             const errData = await response.json();
-            alert(`❌ 실패: ${errData.message}`);
+            alert(`❌ 서버 호출 실패: ${errData.message}`);
+            resetUI();
         }
     } catch (e) {
         alert(`오류 발생: ${e.message}`);
+        resetUI();
     }
+}
+
+async function checkServerStatus(owner, repoName, token, code) {
+    // 깃허브 빌드 결과물(Artifacts) 목록을 조회하여 파일이 생성되었는지 확인
+    const artifactUrl = `https://api.github.com/repos/${owner}/${repoName}/actions/artifacts?per_page=1`;
+    
+    try {
+        const response = await fetch(artifactUrl, {
+            headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' }
+        });
+        if (response.ok) {
+            const data = await response.json();
+            if (data.artifacts && data.artifacts.length > 0) {
+                const latest = data.artifacts[0];
+                // 방금 보낸 요청 코드와 일치하는 결과물이 생성되었는지 판별
+                if (latest.name.includes(code)) {
+                    clearInterval(checkInterval);
+                    
+                    // GitHub API를 통한 다이렉트 zip 다운로드 주소 세팅
+                    downloadUrl = `https://api.github.com/repos/${owner}/${repoName}/actions/artifacts/${latest.id}/zip`;
+                    
+                    document.getElementById('statusBox').style.display = "none";
+                    document.getElementById('downloadArea').style.display = "block";
+                    document.getElementById('startBtn').disabled = false;
+                    
+                    // 유저 편의를 위해 자동으로 다운로드 시도
+                    downloadFile();
+                }
+            }
+        }
+    } catch (e) {
+        console.error("상태 확인 중 오류:", e);
+    }
+}
+
+function downloadFile() {
+    if (!downloadUrl) return;
+    const token = document.getElementById('ghToken').value.trim();
+    
+    // GitHub API 파일 다운로드는 Authorization 헤더가 필요하므로 fetch를 우회해 다운로드 처리
+    fetch(downloadUrl, {
+        headers: { 'Authorization': `token ${token}` }
+    })
+    .then(response => response.blob())
+    .then(blob => {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${document.getElementById('novelCode').value.trim()}_epub.zip`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+    })
+    .catch(err => alert("다운로드에 실패했습니다: " + err.message));
+}
+
+function resetUI() {
+    document.getElementById('startBtn').disabled = false;
+    document.getElementById('statusBox').style.style.display = "none";
 }
 </script>
 </body>
