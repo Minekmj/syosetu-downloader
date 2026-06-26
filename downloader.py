@@ -4,6 +4,7 @@ import sys
 import shutil
 import zipfile
 import requests
+import json
 from bs4 import BeautifulSoup
 
 def extract_number(filename):
@@ -30,7 +31,12 @@ def create_epub_from_folder(folder_path, output_epub_path, book_title, base_dir)
     with open(os.path.join(build_dir, "META-INF", "container.xml"), "w", encoding="utf-8") as f:
         f.write(container_xml)
 
-    css_content = "body { font-family: sans-serif; line-height: 1.7; margin: 6%; }\nh2.subtitle { text-align: center; font-size: 1.5em; font-weight: bold; margin-top: 1.5em; margin-bottom: 2.0em; }\np { text-align: justify; margin-bottom: 0.8em; text-indent: 1em; }"
+    # 💡 카쿠요무 방점(.bouten) 스타일 정의 포함
+    css_content = """body { font-family: sans-serif; line-height: 1.7; margin: 6%; }
+h2.subtitle { text-align: center; font-size: 1.5em; font-weight: bold; margin-top: 1.5em; margin-bottom: 2.0em; }
+p { text-align: justify; margin-bottom: 0.8em; text-indent: 1em; }
+em.bouten { font-style: normal; text-combine-upright: all; -webkit-text-combine-upright: all; text-emphasis-style: sesame; -webkit-text-emphasis-style: sesame; layout-grid-mode: both; }"""
+    
     with open(os.path.join(build_dir, "OEBPS", "css", "style.css"), "w", encoding="utf-8") as f:
         f.write(css_content)
 
@@ -47,7 +53,13 @@ def create_epub_from_folder(folder_path, output_epub_path, book_title, base_dir)
         if not lines: continue
 
         subtitle = lines[0].strip()
-        paragraphs = "".join([f"<p>{line.strip().replace('「','“').replace('」','”')}</p>\n" for line in lines[1:] if line.strip()])
+        
+        # 본문이 HTML 구조(<p>...</p> 또는 <div>)를 가지고 있으면 중복 감싸기 방지
+        first_body_line = lines[1].strip() if len(lines) > 1 else ""
+        if first_body_line.startswith("<p") or first_body_line.startswith("<div"):
+            paragraphs = "".join(lines[1:])
+        else:
+            paragraphs = "".join([f"<p>{line.strip().replace('「','“').replace('」','”')}</p>\n" for line in lines[1:] if line.strip()])
 
         html_content = f"""<?xml version="1.0" encoding="utf-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>{subtitle}</title><link rel="stylesheet" type="text/css" href="css/style.css"/></head><body><h2 class="subtitle">{subtitle}</h2>{paragraphs}</body></html>"""
 
@@ -79,7 +91,8 @@ def create_epub_from_folder(folder_path, output_epub_path, book_title, base_dir)
     shutil.rmtree(build_dir)
     return True
 
-# --- 크롤러 분기 처리 구역 ---
+
+# --- 🌐 크롤러 엔진 구역 ---
 
 def download_syosetu(novel_code, start, end, trs_path):
     """ 소설가가 되자 크롤링 엔진 """
@@ -114,70 +127,102 @@ def download_syosetu(novel_code, start, end, trs_path):
                 f.write(title + "\n\n" + body + "\n\n")
             print(f"📥 [소설가] [{i}화 완료] {title}")
         except Exception as e: print(f"오류: {e}")
-        
+
     return book_title
+
 
 def download_kakuyomu(novel_code, start, end, trs_path):
-    """ 카쿠요무 전용 내부 API 활용 크롤링 엔진 """
-    api_url = f"https://kakuyomu.jp/api/v1/works/{novel_code}"
-    book_title = novel_code
-    
-    # 봇 차단을 우회하기 위해 헤더를 더 정밀하게 세팅합니다.
-    kakuyomu_headers = {
+    """ 정교한 HTML 정제 방식이 도입된 카쿠요무 크롤링 엔진 """
+    headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "application/json, text/plain, */*",
-        "Accept-Language": "ja,ko-KR;q=0.9,ko;q=0.8,en-US;q=0.7,en;q=0.6",
-        "Referer": f"https://kakuyomu.jp/works/{novel_code}"
+        "Accept-Language": "ja,ko-KR;q=0.9,ko;q=0.8,en-US;q=0.7,en;q=0.6"
     }
     
+    url = f"https://kakuyomu.jp/works/{novel_code}"
+    headers["Referer"] = url
+    
     try:
-        # headers를 kakuyomu_headers로 변경
-        res = requests.get(api_url, headers=kakuyomu_headers)
-        
+        res = requests.get(url, headers=headers)
+        res.encoding = "utf-8"
         if res.status_code != 200:
             print(f"❌ 카쿠요무 소설 정보를 가져오지 못했습니다. (상태코드: {res.status_code})")
-            return book_title
+            return novel_code
+            
+        soup = BeautifulSoup(res.text, "html.parser")
+        full_title = soup.title.string if soup.title else ""
+        book_title = re.sub(r'（.+） - カクヨム$', '', full_title).strip()
         
-        data = res.json()
-        book_title = data.get("work", {}).get("title", novel_code)
-        
-        episodes = data.get("work", {}).get("tableOfContents", [])
-        episode_ids = [ep["id"] for ep in episodes if ep.get("type") == "episode"]
-    except Exception as e:
-        print(f"카쿠요무 API 초기화 실패: {e}")
-        return book_title
+        episodes = []
+        html_text = res.text
 
-    total_episodes = len(episode_ids)
+        # 정규식을 이용해 에피소드 ID와 제목 매칭
+        pattern = r'\{"__typename":"Episode","id":"(\d+)","title":"(.+?)"'
+        matches = re.findall(pattern, html_text)
+
+        seen_ids = set()
+        for ep_id, ep_title in matches:
+            if ep_id not in seen_ids:
+                try:
+                    decoded_title = json.loads(f'"{ep_title}"')
+                except Exception:
+                    decoded_title = ep_title
+
+                episodes.append({
+                    "id": ep_id,
+                    "subtitle": decoded_title,
+                    "url": f"https://kakuyomu.jp/works/{novel_code}/episodes/{ep_id}"
+                })
+                seen_ids.add(ep_id)
+
+        print(f"확인: {len(episodes)} 개의 에피소드를 검출했습니다.")
+    except Exception as e:
+        print(f"카쿠요무 초기 정보 획득 실패: {e}")
+        return novel_code
+
+    # 범위 지정
     start_idx = max(0, start - 1)
-    end_idx = min(total_episodes, end)
-    
-    target_episodes = episode_ids[start_idx:end_idx]
-    
+    end_idx = min(len(episodes), end)
+    target_episodes = episodes[start_idx:end_idx]
+
     current_idx = 0
-    for idx, ep_id in enumerate(target_episodes, start=start):
+    for idx, ep in enumerate(target_episodes, start=start):
         try:
-            ep_url = f"https://kakuyomu.jp/api/v1/works/{novel_code}/episodes/{ep_id}"
-            # 에피소드 요청 시에도 동일한 헤더 사용
-            ep_res = requests.get(ep_url, headers=kakuyomu_headers)
+            ep_res = requests.get(ep["url"], headers=headers)
+            ep_res.encoding = "utf-8"
             if ep_res.status_code != 200: continue
-            
-            ep_data = ep_res.json()
-            title = ep_data.get("episode", {}).get("title", f"{idx}화")
-            body_text = ep_data.get("episode", {}).get("body", "")
-            
-            lines = body_text.splitlines()
-            body = "\n".join([line.strip() for line in lines if line.strip()])
-            
+
+            ep_soup = BeautifulSoup(ep_res.text, "html.parser")
+            subtitle_tag = ep_soup.select_one(".widget-episodeTitle") or ep_soup.find("h1")
+            subtitle = subtitle_tag.get_text(strip=True) if subtitle_tag else ep["subtitle"]
+
+            content_element = ep_soup.select_one(".widget-episodeBody")
+            if not content_element: continue
+
+            # 루비 태그 정리
+            for tag in content_element.find_all(['rt', 'rp']):
+                tag.decompose()
+            for ruby in content_element.find_all('ruby'):
+                ruby.replace_with(ruby.get_text(strip=True))
+
+            # 본문 HTML 추출 및 정제 (방점 변환 등)
+            html_str = str(content_element)
+            html_str = re.sub(r' id="L\d+"', '', html_str)
+            html_str = re.sub(r'《《(.+?)》》', r'<em class="bouten">\1</em>', html_str)
+            html_str = html_str.replace(' class="js-vertical-composition-item"', '')
+
             current_idx += 1
-            safe_title = re.sub(r'[\/:*?"<>|]', '_', title)
+            safe_title = re.sub(r'[\/:*?"<>|]', '_', subtitle)
             with open(os.path.join(trs_path, f"{current_idx}번_{safe_title}.txt"), "w", encoding="utf-8") as f:
-                f.write(title + "\n\n" + body + "\n\n")
-            print(f"📥 [카쿠요무] [{idx}화 완료] {title}")
+                f.write(subtitle + "\n\n" + html_str + "\n\n")
+            print(f"📥 [카쿠요무] [{idx}화 완료] {subtitle}")
         except Exception as e:
-            print(f"카쿠요무 에피소드 다운로드 오류 ({ep_id}): {e}")
-            
+            print(f"카쿠요무 에피소드 다운로드 오류 ({ep['id']}): {e}")
+
     return book_title
 
+
+# --- 🚀 메인 제어 구역 ---
 
 if __name__ == "__main__":
     if len(sys.argv) < 4:
@@ -187,25 +232,28 @@ if __name__ == "__main__":
     novel_code = sys.argv[1]
     start = int(sys.argv[2])
     end = int(sys.argv[3])
-    
-    # URL 주소 형태로 입력받았을 때 코드만 추출해주는 보조 장치
+    site_type = sys.argv[4] if len(sys.argv) > 4 else 'syosetu'
+
+    # URL 형태로 주어졌을 때 코드만 정밀 파싱
     if "syosetu.com" in novel_code:
         novel_code = novel_code.split("/")[-2]
+        site_type = "syosetu"
     elif "kakuyomu.jp" in novel_code:
         novel_code = novel_code.split("/")[-1]
+        site_type = "kakuyomu"
 
     trs_path = "./temp_trs"
     os.makedirs(trs_path, exist_ok=True)
 
-    # 코드가 숫자로만 되어 있으면 카쿠요무, n으로 시작하면 소설가로 자동 판별
-    # 안전장치로 4번째 인자에 'kakuyomu'가 들어오는 경우도 함께 판별
-    is_kakuyomu = novel_code.isdigit() or (len(sys.argv) > 4 and sys.argv[4] == 'kakuyomu')
+    # 최종 판정 분기 (수동 site_type 입력 및 자동 숫자 판정 보완)
+    is_kakuyomu = (site_type == 'kakuyomu') or novel_code.isdigit()
 
     if is_kakuyomu:
         book_title = download_kakuyomu(novel_code, start, end, trs_path)
     else:
         book_title = download_syosetu(novel_code, start, end, trs_path)
 
+    # 파일 이름 및 타이틀 최종 마감 작업
     book_title = f"{book_title} | {start} ~ {end}"
     clean_title = re.sub(r'[\/:*?"<>|]', '_', book_title)
 
