@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       novel_code:
-        description: '소설 코드 (예: n2077lm)'
+        description: '소설 코드'
         required: true
       start_page:
         description: '시작 화수'
@@ -14,6 +14,10 @@ on:
         description: '끝 화수'
         required: true
         default: '10'
+      site_type:
+        description: '사이트 종류 (syosetu / kakuyomu)'
+        required: true
+        default: 'syosetu'
 
 jobs:
   build:
@@ -33,7 +37,7 @@ jobs:
 
     - name: 크롤러 및 EPUB 변환 스크립트 실행
       run: |
-        python downloader.py ${{ github.event.inputs.novel_code }} ${{ github.event.inputs.start_page }} ${{ github.event.inputs.end_page }}
+        python downloader.py ${{ github.event.inputs.novel_code }} ${{ github.event.inputs.start_page }} ${{ github.event.inputs.end_page }} ${{ github.event.inputs.site_type }}
 
     - name: 결과물(EPUB) 업로드 저장
       uses: actions/upload-artifact@v4
