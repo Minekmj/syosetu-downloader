@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>소설 다운로더 (GitHub Actions 버전)</title>
+    <style>
+        body { font-family: sans-serif; background: #f4f6f9; padding: 20px; color: #333; }
+        .container { max-width: 500px; margin: 40px auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        h1 { text-align: center; font-size: 22px; color: #2c3e50; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input { width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 6px; }
+        button { width: 100%; padding: 12px; background: #2ecc71; color: white; border: none; border-radius: 6px; font-size: 16px; cursor: pointer; font-weight: bold; }
+        button:hover { background: #27ae60; }
+        .info { margin-top: 20px; font-size: 13px; color: #7f8c8d; line-height: 1.5; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>📖 소설 다운로더 & EPUB 변환기</h1>
+    
+    <div class="form-group">
+        <label>GitHub 개인 토큰 (Classic Token)</label>
+        <input type="password" id="ghToken" placeholder="ghp_...">
+    </div>
+    <div class="form-group">
+        <label>소설 코드</label>
+        <input type="text" id="novelCode" placeholder="n2077lm">
+    </div>
+    <div class="form-group" style="display: flex; gap: 10px;">
+        <div style="flex: 1;">
+            <label>시작 화수</label>
+            <input type="number" id="startPage" value="1">
+        </div>
+        <div style="flex: 1;">
+            <label>끝 화수</label>
+            <input type="number" id="endPage" value="10">
+        </div>
+    </div>
+    
+    <button onclick="triggerDownload()">⚡ GitHub에서 다운로드 시작</button>
+
+    <div class="info">
+        <p>💡 <b>작동 원리:</b> 버튼을 누르면 내 컴퓨터가 아닌 GitHub Actions 서버가 구동되어 소설을 크롤링하고 EPUB 파일을 만들어 줍니다.</p>
+        <p>작업이 끝나면 본인 GitHub 저장소의 <b>Actions</b> 탭에서 생성된 EPUB 파일을 다운로드하실 수 있습니다.</p>
+    </div>
+</div>
+
+<script>
+async function triggerDownload() {
+    const token = document.getElementById('ghToken').value;
+    const code = document.getElementById('novelCode').value;
+    const start = document.getElementById('startPage').value;
+    const end = document.getElementById('endPage').value;
+
+    if (!token || !code) {
+        alert("토큰과 소설 코드를 모두 입력해주세요.");
+        return;
+    }
+
+    // 현재 접속 중인 GitHub 저장소 정보 추출
+    const pathParts = window.location.pathname.split('/');
+    const repoName = pathParts[1] || "syosetu-downloader"; // 본인 저장소 이름에 맞게 수정 필요시 수정
+    
+    // GitHub API를 호출하여 Actions 워크플로우 실행
+    const url = `https://api.github.com/repos/${window.location.hostname.split('.')[0]}/${repoName}/actions/workflows/download.yml/dispatches`;
+
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Authorization': `token ${token}`,
+                'Accept': 'application/vnd.github.v3+json',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                ref: 'main', // 브랜치 이름
+                inputs: { novel_code: code, start_page: start, end_page: end }
+            })
+        });
+
+        if (response.status === 204) {
+            alert("🚀 GitHub Actions 서버가 성공적으로 깨어났습니다!\n잠시 후 본인 깃허브의 'Actions' 탭으로 가시면 다운로드가 진행되는 것을 볼 수 있습니다.");
+        } else {
+            const errData = await response.json();
+            alert(`❌ 실패: ${errData.message}`);
+        }
+    } catch (e) {
+        alert(`오류 발생: ${e.message}`);
+    }
+}
+</script>
+</body>
+</html>
