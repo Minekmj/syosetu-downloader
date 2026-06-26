@@ -119,29 +119,34 @@ def download_syosetu(novel_code, start, end, trs_path):
 
 def download_kakuyomu(novel_code, start, end, trs_path):
     """ 카쿠요무 전용 내부 API 활용 크롤링 엔진 """
-    # 1. 메타데이터 및 에피소드 ID 리스트 확보
     api_url = f"https://kakuyomu.jp/api/v1/works/{novel_code}"
     book_title = novel_code
     
+    # 봇 차단을 우회하기 위해 헤더를 더 정밀하게 세팅합니다.
+    kakuyomu_headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "ja,ko-KR;q=0.9,ko;q=0.8,en-US;q=0.7,en;q=0.6",
+        "Referer": f"https://kakuyomu.jp/works/{novel_code}"
+    }
+    
     try:
-        res = requests.get(api_url, headers={"User-Agent": "Mozilla/5.0"})
+        # headers를 kakuyomu_headers로 변경
+        res = requests.get(api_url, headers=kakuyomu_headers)
+        
         if res.status_code != 200:
-            print("❌ 카쿠요무 소설 정보를 가져오지 못했습니다. 코드를 확인하세요.")
+            print(f"❌ 카쿠요무 소설 정보를 가져오지 못했습니다. (상태코드: {res.status_code})")
             return book_title
         
         data = res.json()
         book_title = data.get("work", {}).get("title", novel_code)
         
-        # 전체 에피소드 ID 추출
         episodes = data.get("work", {}).get("tableOfContents", [])
-        # 'episode' 타입인 것만 추출 (챕터 제목 레이블 제외)
         episode_ids = [ep["id"] for ep in episodes if ep.get("type") == "episode"]
     except Exception as e:
         print(f"카쿠요무 API 초기화 실패: {e}")
         return book_title
 
-    # 지정한 범위 필터링 (사용자는 1부터 지정하므로 인덱스 보정 필요)
-    # 카쿠요무는 화수 개념이 배열 인덱스이므로 범위 제어
     total_episodes = len(episode_ids)
     start_idx = max(0, start - 1)
     end_idx = min(total_episodes, end)
@@ -152,20 +157,18 @@ def download_kakuyomu(novel_code, start, end, trs_path):
     for idx, ep_id in enumerate(target_episodes, start=start):
         try:
             ep_url = f"https://kakuyomu.jp/api/v1/works/{novel_code}/episodes/{ep_id}"
-            ep_res = requests.get(ep_url, headers={"User-Agent": "Mozilla/5.0"})
+            # 에피소드 요청 시에도 동일한 헤더 사용
+            ep_res = requests.get(ep_url, headers=kakuyomu_headers)
             if ep_res.status_code != 200: continue
             
             ep_data = ep_res.json()
             title = ep_data.get("episode", {}).get("title", f"{idx}화")
             body_text = ep_data.get("episode", {}).get("body", "")
             
-            # 카쿠요무 API는 루비를 |소설《노벨》 형태로 줄 수 있으므로 가공 처리 (필요시 정규식 정제 가능)
-            # 여기서는 기본 텍스트 정제만 진행
             lines = body_text.splitlines()
             body = "\n".join([line.strip() for line in lines if line.strip()])
             
             current_idx += 1
-            # 윈도우 파일명 금지 문자 제거
             safe_title = re.sub(r'[\/:*?"<>|]', '_', title)
             with open(os.path.join(trs_path, f"{current_idx}번_{safe_title}.txt"), "w", encoding="utf-8") as f:
                 f.write(title + "\n\n" + body + "\n\n")
@@ -174,6 +177,7 @@ def download_kakuyomu(novel_code, start, end, trs_path):
             print(f"카쿠요무 에피소드 다운로드 오류 ({ep_id}): {e}")
             
     return book_title
+
 
 if __name__ == "__main__":
     if len(sys.argv) < 4:
