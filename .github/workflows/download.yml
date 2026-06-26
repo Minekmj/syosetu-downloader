@@ -39,4 +39,5 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: ${{ github.event.inputs.novel_code }}-EPUB
-        path: output/*.epub
+        path: output/
+        retention-days: 1
