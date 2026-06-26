@@ -30,10 +30,20 @@
         <label>GitHub 개인 토큰 (Classic Token)</label>
         <input type="text" id="ghToken" placeholder="ghp_...">
     </div>
+    
     <div class="form-group">
-        <label>소설 코드</label>
-        <input type="text" id="novelCode" placeholder="n2077lm">
+        <label>연동 서비스 선택</label>
+        <select id="siteType" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 15px;">
+            <option value="syosetu">소설가가 되자 (n코드)</option>
+            <option value="kakuyomu">카쿠요무 (Kakuyomu)</option>
+        </select>
     </div>
+
+    <div class="form-group">
+        <label>소설 코드 또는 URL 전체</label>
+        <input type="text" id="novelCode" placeholder="n2077lm 또는 카쿠요무 소설번호">
+    </div>
+
     <div class="form-group" style="display: flex; gap: 10px;">
         <div style="flex: 1;">
             <label>시작 화수</label>
@@ -60,21 +70,32 @@
 let checkInterval = null;
 let downloadUrl = "";
 
+// index.html 내의 triggerDownload() 함수 본문 수정
 async function triggerDownload() {
-    const token = document.getElementById('ghToken').value.strip ? document.getElementById('ghToken').value.strip() : document.getElementById('ghToken').value.trim();
-    const code = document.getElementById('novelCode').value.trim().toLowerCase();
+    const token = document.getElementById('ghToken').value.trim();
+    let code = document.getElementById('novelCode').value.trim();
     const start = document.getElementById('startPage').value;
     const end = document.getElementById('endPage').value;
+    const site = document.getElementById('siteType').value; // 추가
 
     if (!token || !code) {
         alert("토큰과 소설 코드를 모두 입력해주세요.");
         return;
     }
 
+    // URL에서 코드만 파싱해내는 프론트엔드 안전장치
+    if(code.includes("syosetu.com")) {
+        const parts = code.split('/');
+        code = parts[parts.length - 2] || parts[parts.length - 1];
+    } else if(code.includes("kakuyomu.jp")) {
+        const parts = code.split('/');
+        code = parts[parts.length - 1];
+    }
+
     const pathParts = window.location.pathname.split('/');
     const repoName = pathParts[1] || "syosetu-downloader"; 
     const owner = window.location.hostname.split('.')[0];
-    
+
     const triggerUrl = `https://api.github.com/repos/${owner}/${repoName}/actions/workflows/download.yml/dispatches`;
 
     document.getElementById('startBtn').disabled = true;
@@ -94,13 +115,17 @@ async function triggerDownload() {
             },
             body: JSON.stringify({
                 ref: 'main',
-                inputs: { novel_code: code, start_page: start, end_page: end }
+                inputs: { 
+                    novel_code: code, 
+                    start_page: start, 
+                    end_page: end,
+                    site_type: site // 이 인자를 GitHub 액션에 같이 던집니다.
+                }
             })
         });
 
         if (response.status === 204) {
             statusText.innerText = "🚀 서버 구동 성공! 깃허브에서 크롤링 진행 중... (약 1~2분 소요)";
-            // 10초 후부터 깃허브 서버 상태 추적 시작 (체크 주기: 7초)
             setTimeout(() => {
                 checkInterval = setInterval(() => checkServerStatus(owner, repoName, token, code), 7000);
             }, 10000);
@@ -115,6 +140,7 @@ async function triggerDownload() {
     }
 }
 
+        
 async function checkServerStatus(owner, repoName, token, code) {
     // 깃허브 빌드 결과물(Artifacts) 목록을 조회하여 파일이 생성되었는지 확인
     const artifactUrl = `https://api.github.com/repos/${owner}/${repoName}/actions/artifacts?per_page=1`;
