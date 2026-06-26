@@ -1,0 +1,42 @@
+name: Syosetu Novel Downloader
+
+on:
+  workflow_dispatch:
+    inputs:
+      novel_code:
+        description: '소설 코드 (예: n2077lm)'
+        required: true
+      start_page:
+        description: '시작 화수'
+        required: true
+        default: '1'
+      end_page:
+        description: '끝 화수'
+        required: true
+        default: '10'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: 저장소 체크아웃
+      uses: actions/checkout@v4
+
+    - name: 파이썬 설정
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: 필수 패키지 설치
+      run: |
+        pip install requests beautifulsoup4
+
+    - name: 크롤러 및 EPUB 변환 스크립트 실행
+      run: |
+        python downloader.py ${{ github.event.inputs.novel_code }} ${{ github.event.inputs.start_page }} ${{ github.event.inputs.end_page }}
+
+    - name: 결과물(EPUB) 업로드 저장
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ github.event.inputs.novel_code }}-EPUB
+        path: ./output/*.epub
