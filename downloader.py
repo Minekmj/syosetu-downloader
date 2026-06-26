@@ -132,7 +132,7 @@ def download_syosetu(novel_code, start, end, trs_path):
 
 
 def download_kakuyomu(novel_code, start, end, trs_path):
-    """ 정교한 HTML 정제 방식이 도입된 카쿠요무 크롤링 엔진 """
+    """ 문단 앞머리에 연속된 모든 종류의 공백을 글자가 나올 때까지 완전히 지우는 카쿠요무 엔진 """
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "application/json, text/plain, */*",
@@ -156,7 +156,6 @@ def download_kakuyomu(novel_code, start, end, trs_path):
         episodes = []
         html_text = res.text
 
-        # 정규식을 이용해 에피소드 ID와 제목 매칭
         pattern = r'\{"__typename":"Episode","id":"(\d+)","title":"(.+?)"'
         matches = re.findall(pattern, html_text)
 
@@ -180,7 +179,6 @@ def download_kakuyomu(novel_code, start, end, trs_path):
         print(f"카쿠요무 초기 정보 획득 실패: {e}")
         return novel_code
 
-    # 범위 지정
     start_idx = max(0, start - 1)
     end_idx = min(len(episodes), end)
     target_episodes = episodes[start_idx:end_idx]
@@ -205,21 +203,34 @@ def download_kakuyomu(novel_code, start, end, trs_path):
             for ruby in content_element.find_all('ruby'):
                 ruby.replace_with(ruby.get_text(strip=True))
 
-            # 본문 HTML 추출 및 정제 (방점 변환 등)
-            html_str = str(content_element)
-            html_str = re.sub(r' id="L\d+"', '', html_str)
-            html_str = re.sub(r'《《(.+?)》》', r'<em class="bouten">\1</em>', html_str)
-            html_str = html_str.replace(' class="js-vertical-composition-item"', '')
+            body_paragraphs = []
+            for p in content_element.find_all('p'):
+                p_text = p.get_text(" ")
+                
+                # 💡 [핵심 수정] 문단 왼쪽에 스페이스가 몇 개가 있든 '완전 삭제' 처리
+                # 일반 스페이스(' '), 일본어 전각 스페이스('　'), 탭('\t') 기호가 없어질 때까지 통째로 지웁니다.
+                p_text = p_text.lstrip(' 　\t') 
+                
+                # 우측 공백도 깔끔하게 마감
+                p_text = p_text.rstrip()
+                
+                if p_text:
+                    # 강조 기호 제거 및 정제
+                    p_text = re.sub(r'《《(.+?)》》', r'\1', p_text) 
+                    body_paragraphs.append(p_text)
+            
+            body = "\n".join(body_paragraphs)
 
             current_idx += 1
             safe_title = re.sub(r'[\/:*?"<>|]', '_', subtitle)
             with open(os.path.join(trs_path, f"{current_idx}번_{safe_title}.txt"), "w", encoding="utf-8") as f:
-                f.write(subtitle + "\n\n" + html_str + "\n\n")
+                f.write(subtitle + "\n\n" + body + "\n\n")
             print(f"📥 [카쿠요무] [{idx}화 완료] {subtitle}")
         except Exception as e:
             print(f"카쿠요무 에피소드 다운로드 오류 ({ep['id']}): {e}")
 
     return book_title
+
 
 
 # --- 🚀 메인 제어 구역 ---
