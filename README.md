@@ -1,15 +1,17 @@
 ## 정의
 
-이 프로젝트는 소설가가 되자(小說家になろう)와 카쿠요무(カクヨム)의 에피소드를 다운로드 하여 epub 형식으로 만드는 프로젝트입니다.
+이 프로젝트는 '소설가가 되자(小説家になろう)'와 '카쿠요무(カクヨム)'의 에피소드를 다운로드하여 epub 형식으로 만드는 프로젝트입니다.
 
-이는 workflow와 Pages, 그리고 personal access token (classic)를 이용하여 git으로만으로도 실행 가능하게 제작 되었습니다.
+GitHub Actions(Workflow)와 GitHub Pages, 그리고 Personal Access Token (classic)을 이용하여 오직 git 환경만으로도 실행 가능하게 제작되었습니다.
 
-이를 이용하여 생긴 불이익은 책임지지 않습니다.
+> ⚠️ **면책 조항:** 본 프로그램을 이용함으로써 발생하는 모든 불이익에 대해 개발자는 책임을 지지 않습니다.
 
 ## 사용법
 
-1. 프로젝트를 만들고 그곳에 이 프로젝트와 똑같은 구조와 코드로 제작합니다. index.html은 필요 없습니다.
-2. 프로젝트를 Public로 설정합니다. 이는 무료 실행을 위한 것 입니다.
-3. 프로필에서 설정에 개발자 설정에 개인 엑세스 토큰을 제작합니다. 이는 repo와 workflow를 활성화 해야합니다.
-4. 사이트(<< https://minekmj.github.io/syosetu-downloader/ >>)에서 토큰에 자신의 개인 엑세스 토큰을 넣고 원하는 정보를 넣고 다운로드 합니다.
-5. 그러면 epub이 zip파일속에 있는 상태로 저장되어 사이트에서 다운 됩니다.
+1. GitHub에서 새 프로젝트(Repository)를 만들고, 본 프로젝트와 똑같은 구조와 코드로 채워 넣습니다. (※ `index.html` 파일은 복사하지 않아도 됩니다.)
+2. 프로젝트 설정을 **Public**으로 변경합니다. (무료로 GitHub Actions를 실행하기 위함입니다.)
+3. GitHub 프로필 Settings -> Developer Settings에서 **Personal Access Token (classic)**을 생성합니다.
+   * 💡 토큰 생성 시 **`repo`**와 **`workflow`** 권한을 반드시 체크해야 합니다.
+4. [syosetu-downloader 서비스 페이지](https://minekmj.github.io/syosetu-downloader/)에 접속합니다.
+5. 페이지 안내에 따라 생성한 개인 액세스 토큰과 다운로드할 소설 정보를 입력한 뒤 실행합니다.
+6. 완료되면 epub 파일이 포함된 zip 압축 파일이 웹 브라우저를 통해 자동으로 다운로드됩니다.
