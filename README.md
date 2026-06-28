@@ -8,10 +8,9 @@ GitHub Actions(Workflow)와 GitHub Pages, 그리고 Personal Access Token (class
 
 ## 사용법
 
-1. GitHub에서 새 프로젝트(Repository)를 만들고, 본 프로젝트와 똑같은 구조와 코드로 채워 넣습니다.
-2. 프로젝트 설정을 **Public**으로 변경합니다. (무료로 GitHub Actions를 실행하기 위함입니다.)
-3. GitHub 프로필 Settings -> Developer Settings에서 **Personal Access Token (classic)**을 생성합니다.
+1. 이 프로젝트를 복제하기 위해 우측 상단 Fork버튼을 눌른 후 Create fork를 눌러 복제 합니다.
+2. GitHub 프로필 Settings -> Developer Settings에서 **Personal Access Token (classic)**을 생성합니다.
    * 💡 토큰 생성 시 **`repo`**와 **`workflow`** 권한을 반드시 체크해야 합니다.
-4. 프로젝트 설정에서 GitHub Pages를 사용하고 만들어진 사이트에 접속합니다.
-5. 페이지 안내에 따라 생성한 개인 액세스 토큰과 다운로드할 소설 정보를 입력한 뒤 실행합니다.
-6. 완료되면 epub 파일이 포함된 zip 압축 파일이 웹 브라우저를 통해 자동으로 다운로드됩니다.
+3. 복제된 프로젝트 설정에서 GitHub Pages를 사용하고(Branch는 main으로 설정) 만들어진 사이트에 접속합니다.
+4. 페이지 안내에 따라 생성한 개인 액세스 토큰과 다운로드할 소설 정보를 입력한 뒤 실행합니다.
+5. 완료되면 epub 파일이 포함된 zip 압축 파일이 웹 브라우저를 통해 자동으로 다운로드됩니다.
